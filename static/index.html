@@ -137,9 +137,16 @@
             50% { opacity: 0.7; }
         }
         
-        .panels-grid {
+        .main-layout {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .panels-grid {
+            display: flex;
+            flex-direction: column;
             gap: 1.5rem;
         }
         
@@ -247,13 +254,18 @@
             content: "🚨";
         }
         
-        .transcript-section {
-            margin-top: 2rem;
+        .transcript-column {
+            display: flex;
+            flex-direction: column;
         }
         
         .panel-transcript {
             border-left-color: #9b59b6;
             max-width: 100%;
+            height: 100%;
+            min-height: 500px;
+            display: flex;
+            flex-direction: column;
         }
         
         .transcript-status {
@@ -269,7 +281,7 @@
         }
         
         .transcript-content {
-            max-height: 300px;
+            flex: 1;
             overflow-y: auto;
             padding: 1rem;
             background: #f8f9fa;
@@ -277,6 +289,7 @@
             font-family: 'Courier New', monospace;
             line-height: 1.6;
             font-size: 0.9rem;
+            min-height: 400px;
         }
         
         .transcript-placeholder {
@@ -332,13 +345,21 @@
             animation: pulse 2s infinite;
         }
         
+        @media (max-width: 1024px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+        }
+        
         @media (max-width: 768px) {
             .container {
                 padding: 1rem;
             }
             
-            .panels-grid {
+            .main-layout {
                 grid-template-columns: 1fr;
+                gap: 1rem;
             }
             
             .controls {
@@ -383,58 +404,61 @@
             <p class="last-update" id="lastUpdate">Aguardando início da consulta...</p>
         </div>
 
-        <div class="panels-grid">
-            <!-- Painel Sindrômico -->
-            <div class="panel panel-sindromico">
-                <h3>
-                    🔍 Diagnóstico Sindrômico
-                </h3>
-                <div class="panel-content empty" id="sindromico-content">
-                    Aguardando dados da consulta...
+        <div class="main-layout">
+            <!-- Coluna da Transcrição (Esquerda) -->
+            <div class="transcript-column">
+                <div class="panel panel-transcript">
+                    <h3>
+                        🎤 Transcrição da Consulta
+                        <span class="transcript-status" id="transcriptStatus">Aguardando...</span>
+                    </h3>
+                    <div class="transcript-content" id="transcript-content">
+                        <div class="transcript-placeholder">
+                            Inicie a consulta para ver a transcrição em tempo real...
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <!-- Painel Hipóteses -->
-            <div class="panel panel-hipoteses">
-                <h3>
-                    🎯 Hipóteses Diagnósticas
-                </h3>
-                <div class="panel-content empty" id="hipoteses-content">
-                    Aguardando dados da consulta...
+            
+            <!-- Coluna dos Painéis Clínicos (Direita) -->
+            <div class="panels-grid">
+                <!-- Painel Sindrômico -->
+                <div class="panel panel-sindromico">
+                    <h3>
+                        🔍 Diagnóstico Sindrômico
+                    </h3>
+                    <div class="panel-content empty" id="sindromico-content">
+                        Aguardando dados da consulta...
+                    </div>
                 </div>
-            </div>
 
-            <!-- Painel Perguntas -->
-            <div class="panel panel-perguntas">
-                <h3>
-                    ❓ Perguntas a Fazer
-                </h3>
-                <div class="panel-content empty" id="perguntas-content">
-                    Aguardando dados da consulta...
+                <!-- Painel Hipóteses -->
+                <div class="panel panel-hipoteses">
+                    <h3>
+                        🎯 Hipóteses Diagnósticas
+                    </h3>
+                    <div class="panel-content empty" id="hipoteses-content">
+                        Aguardando dados da consulta...
+                    </div>
                 </div>
-            </div>
 
-            <!-- Painel Condutas -->
-            <div class="panel panel-condutas">
-                <h3>
-                    💊 Condutas Sugeridas
-                </h3>
-                <div class="panel-content empty" id="condutas-content">
-                    Aguardando dados da consulta...
+                <!-- Painel Perguntas -->
+                <div class="panel panel-perguntas">
+                    <h3>
+                        ❓ Perguntas a Fazer
+                    </h3>
+                    <div class="panel-content empty" id="perguntas-content">
+                        Aguardando dados da consulta...
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Painel de Transcrição -->
-        <div class="transcript-section">
-            <div class="panel panel-transcript">
-                <h3>
-                    🎤 Transcrição da Consulta
-                    <span class="transcript-status" id="transcriptStatus">Aguardando...</span>
-                </h3>
-                <div class="transcript-content" id="transcript-content">
-                    <div class="transcript-placeholder">
-                        Inicie a consulta para ver a transcrição em tempo real...
+                <!-- Painel Condutas -->
+                <div class="panel panel-condutas">
+                    <h3>
+                        💊 Condutas Sugeridas
+                    </h3>
+                    <div class="panel-content empty" id="condutas-content">
+                        Aguardando dados da consulta...
                     </div>
                 </div>
             </div>
