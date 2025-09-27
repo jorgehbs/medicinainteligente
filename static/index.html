@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prontuário Eletrônico Hands-Free</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #2c3e50;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            margin-top: 0.5rem;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .controls {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .encounter-input {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .encounter-input input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+        
+        .encounter-input input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: #5a6fd8;
+            transform: translateY(-1px);
+        }
+        
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .btn-danger:hover:not(:disabled) {
+            background: #c0392b;
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            margin-left: auto;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        .status.disconnected {
+            background: #fed7d7;
+            color: #c53030;
+        }
+        
+        .status.connected {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+        
+        .status.recording {
+            background: #fef5e7;
+            color: #c05621;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .panels-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .panel {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            padding: 1.5rem;
+            border-left: 4px solid;
+        }
+        
+        .panel-sindromico {
+            border-left-color: #3498db;
+        }
+        
+        .panel-hipoteses {
+            border-left-color: #e74c3c;
+        }
+        
+        .panel-perguntas {
+            border-left-color: #f39c12;
+        }
+        
+        .panel-condutas {
+            border-left-color: #27ae60;
+        }
+        
+        .panel h3 {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .panel-content {
+            line-height: 1.6;
+        }
+        
+        .panel-content.empty {
+            color: #7f8c8d;
+            font-style: italic;
+            text-align: center;
+            padding: 2rem 0;
+        }
+        
+        .hipoteses-list {
+            list-style: none;
+        }
+        
+        .hipotese-item {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 3px solid #e74c3c;
+        }
+        
+        .hipotese-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .hipotese-nome {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .confidence {
+            background: #e74c3c;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+        
+        .hipotese-razoes {
+            font-size: 0.9rem;
+            color: #5a6c7d;
+        }
+        
+        .perguntas-list, .condutas-list {
+            list-style: none;
+        }
+        
+        .perguntas-list li, .condutas-list li {
+            margin-bottom: 0.5rem;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .perguntas-list li:before {
+            content: "❓";
+            margin-right: 0.5rem;
+        }
+        
+        .condutas-list li:before {
+            content: "💡";
+            margin-right: 0.5rem;
+        }
+        
+        .condutas-list li:first-child:before {
+            content: "🚨";
+        }
+        
+        .update-info {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            text-align: center;
+            border: 1px solid #e1e8ed;
+        }
+        
+        .last-update {
+            font-size: 0.9rem;
+            color: #7f8c8d;
+        }
+        
+        .recording-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #e74c3c;
+            color: white;
+            padding: 1rem;
+            border-radius: 50%;
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+            z-index: 1000;
+            display: none;
+            animation: pulse 2s infinite;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .panels-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .controls .btn {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="recording-indicator" id="recordingIndicator">
+        🎤
+    </div>
+
+    <header class="header">
+        <h1>Prontuário Eletrônico Hands-Free</h1>
+        <p>Sistema de registro de atendimentos médicos com painéis de apoio clínico em tempo real</p>
+    </header>
+
+    <div class="container">
+        <div class="controls">
+            <div class="encounter-input">
+                <input type="text" id="encounterId" placeholder="ID do Atendimento (ex: ATD-2025-001)" value="">
+            </div>
+            <button class="btn btn-primary" id="startBtn">
+                🎤 Iniciar Consulta
+            </button>
+            <button class="btn btn-danger" id="stopBtn" disabled>
+                ⏹️ Finalizar Consulta
+            </button>
+            <div class="status disconnected" id="statusIndicator">
+                Desconectado
+            </div>
+        </div>
+
+        <div class="update-info">
+            <p><strong>ℹ️ Painéis atualizam automaticamente a cada 1 minuto durante a consulta</strong></p>
+            <p class="last-update" id="lastUpdate">Aguardando início da consulta...</p>
+        </div>
+
+        <div class="panels-grid">
+            <!-- Painel Sindrômico -->
+            <div class="panel panel-sindromico">
+                <h3>
+                    🔍 Diagnóstico Sindrômico
+                </h3>
+                <div class="panel-content empty" id="sindromico-content">
+                    Aguardando dados da consulta...
+                </div>
+            </div>
+
+            <!-- Painel Hipóteses -->
+            <div class="panel panel-hipoteses">
+                <h3>
+                    🎯 Hipóteses Diagnósticas
+                </h3>
+                <div class="panel-content empty" id="hipoteses-content">
+                    Aguardando dados da consulta...
+                </div>
+            </div>
+
+            <!-- Painel Perguntas -->
+            <div class="panel panel-perguntas">
+                <h3>
+                    ❓ Perguntas a Fazer
+                </h3>
+                <div class="panel-content empty" id="perguntas-content">
+                    Aguardando dados da consulta...
+                </div>
+            </div>
+
+            <!-- Painel Condutas -->
+            <div class="panel panel-condutas">
+                <h3>
+                    💊 Condutas Sugeridas
+                </h3>
+                <div class="panel-content empty" id="condutas-content">
+                    Aguardando dados da consulta...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class MedicalRecordApp {
+            constructor() {
+                this.audioWs = null;
+                this.panelsWs = null;
+                this.mediaRecorder = null;
+                this.audioStream = null;
+                this.isRecording = false;
+                this.currentEncounter = null;
+                
+                this.initializeElements();
+                this.initializeEventListeners();
+                this.generateDefaultEncounterId();
+            }
+            
+            initializeElements() {
+                this.encounterInput = document.getElementById('encounterId');
+                this.startBtn = document.getElementById('startBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.statusIndicator = document.getElementById('statusIndicator');
+                this.lastUpdate = document.getElementById('lastUpdate');
+                this.recordingIndicator = document.getElementById('recordingIndicator');
+                
+                // Panel content elements
+                this.sindromicContent = document.getElementById('sindromico-content');
+                this.hipotesesContent = document.getElementById('hipoteses-content');
+                this.perguntasContent = document.getElementById('perguntas-content');
+                this.condutasContent = document.getElementById('condutas-content');
+            }
+            
+            initializeEventListeners() {
+                this.startBtn.addEventListener('click', () => this.startConsultation());
+                this.stopBtn.addEventListener('click', () => this.stopConsultation());
+            }
+            
+            generateDefaultEncounterId() {
+                const now = new Date();
+                const timestamp = now.toISOString().slice(0, 19).replace(/[-:T]/g, '');
+                this.encounterInput.value = `ATD-${timestamp}`;
+            }
+            
+            async startConsultation() {
+                try {
+                    const encounterId = this.encounterInput.value.trim();
+                    if (!encounterId) {
+                        alert('Por favor, informe o ID do atendimento');
+                        return;
+                    }
+                    
+                    this.currentEncounter = encounterId;
+                    
+                    // Request microphone permission
+                    this.audioStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            sampleRate: 16000,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        } 
+                    });
+                    
+                    // Setup WebSocket connections
+                    await this.setupWebSockets(encounterId);
+                    
+                    // Setup audio recording
+                    this.setupAudioRecording();
+                    
+                    // Update UI
+                    this.updateUIState('recording');
+                    
+                } catch (error) {
+                    console.error('Erro ao iniciar consulta:', error);
+                    alert('Erro ao acessar microfone. Verifique as permissões.');
+                }
+            }
+            
+            async setupWebSockets(encounterId) {
+                return new Promise((resolve, reject) => {
+                    let connectionsReady = 0;
+                    
+                    // Audio WebSocket
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsHost = window.location.host;
+                    
+                    this.audioWs = new WebSocket(`${protocol}//${wsHost}/ws/audio/${encounterId}`);
+                    
+                    this.audioWs.onopen = () => {
+                        console.log('Conexão de áudio estabelecida');
+                        connectionsReady++;
+                        if (connectionsReady === 2) resolve();
+                    };
+                    
+                    this.audioWs.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'final_report') {
+                            this.handleFinalReport(data.data);
+                        }
+                    };
+                    
+                    this.audioWs.onerror = (error) => {
+                        console.error('Erro no WebSocket de áudio:', error);
+                        reject(error);
+                    };
+                    
+                    // Panels WebSocket
+                    this.panelsWs = new WebSocket(`${protocol}//${wsHost}/ws/panels/${encounterId}`);
+                    
+                    this.panelsWs.onopen = () => {
+                        console.log('Conexão de painéis estabelecida');
+                        connectionsReady++;
+                        if (connectionsReady === 2) resolve();
+                    };
+                    
+                    this.panelsWs.onmessage = (event) => {
+                        const panelsData = JSON.parse(event.data);
+                        this.updatePanels(panelsData);
+                    };
+                    
+                    this.panelsWs.onerror = (error) => {
+                        console.error('Erro no WebSocket de painéis:', error);
+                        reject(error);
+                    };
+                });
+            }
+            
+            setupAudioRecording() {
+                this.mediaRecorder = new MediaRecorder(this.audioStream, {
+                    mimeType: 'audio/webm;codecs=opus',
+                    audioBitsPerSecond: 16000
+                });
+                
+                this.mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0 && this.audioWs?.readyState === WebSocket.OPEN) {
+                        this.audioWs.send(event.data);
+                    }
+                };
+                
+                // Start recording with chunks every 2 seconds
+                this.mediaRecorder.start(2000);
+                this.isRecording = true;
+            }
+            
+            async stopConsultation() {
+                try {
+                    // Send finalization signal
+                    if (this.audioWs?.readyState === WebSocket.OPEN) {
+                        this.audioWs.send('__finalize__');
+                    }
+                    
+                    // Stop recording
+                    if (this.mediaRecorder?.state === 'recording') {
+                        this.mediaRecorder.stop();
+                    }
+                    
+                    // Stop audio stream
+                    if (this.audioStream) {
+                        this.audioStream.getTracks().forEach(track => track.stop());
+                    }
+                    
+                    // Close WebSockets after a delay to allow final processing
+                    setTimeout(() => {
+                        this.audioWs?.close();
+                        this.panelsWs?.close();
+                    }, 2000);
+                    
+                    // Update UI
+                    this.updateUIState('stopped');
+                    
+                } catch (error) {
+                    console.error('Erro ao finalizar consulta:', error);
+                }
+            }
+            
+            updateUIState(state) {
+                switch (state) {
+                    case 'recording':
+                        this.startBtn.disabled = true;
+                        this.stopBtn.disabled = false;
+                        this.encounterInput.disabled = true;
+                        this.statusIndicator.className = 'status recording';
+                        this.statusIndicator.textContent = 'Gravando...';
+                        this.recordingIndicator.style.display = 'block';
+                        break;
+                        
+                    case 'stopped':
+                        this.startBtn.disabled = false;
+                        this.stopBtn.disabled = true;
+                        this.encounterInput.disabled = false;
+                        this.statusIndicator.className = 'status disconnected';
+                        this.statusIndicator.textContent = 'Desconectado';
+                        this.recordingIndicator.style.display = 'none';
+                        this.generateDefaultEncounterId();
+                        break;
+                }
+            }
+            
+            updatePanels(data) {
+                const updateTime = new Date(data.updated_at * 1000);
+                this.lastUpdate.textContent = `Última atualização: ${updateTime.toLocaleString('pt-BR')}`;
+                
+                // Update syndromic panel
+                this.sindromicContent.className = 'panel-content';
+                this.sindromicContent.textContent = data.sindromico || 'Sem dados suficientes...';
+                
+                // Update hypotheses panel
+                if (data.hipoteses && data.hipoteses.length > 0) {
+                    this.hipotesesContent.className = 'panel-content';
+                    this.hipotesesContent.innerHTML = this.renderHypotheses(data.hipoteses);
+                } else {
+                    this.hipotesesContent.className = 'panel-content empty';
+                    this.hipotesesContent.textContent = 'Aguardando dados para gerar hipóteses...';
+                }
+                
+                // Update questions panel
+                if (data.perguntas && data.perguntas.length > 0) {
+                    this.perguntasContent.className = 'panel-content';
+                    this.perguntasContent.innerHTML = this.renderList(data.perguntas, 'perguntas-list');
+                } else {
+                    this.perguntasContent.className = 'panel-content empty';
+                    this.perguntasContent.textContent = 'Nenhuma pergunta específica no momento...';
+                }
+                
+                // Update management panel
+                if (data.condutas && data.condutas.length > 0) {
+                    this.condutasContent.className = 'panel-content';
+                    this.condutasContent.innerHTML = this.renderList(data.condutas, 'condutas-list');
+                } else {
+                    this.condutasContent.className = 'panel-content empty';
+                    this.condutasContent.textContent = 'Aguardando dados para sugerir condutas...';
+                }
+            }
+            
+            renderHypotheses(hypotheses) {
+                const listHtml = hypotheses.map(hip => `
+                    <div class="hipotese-item">
+                        <div class="hipotese-header">
+                            <span class="hipotese-nome">${hip.dx}</span>
+                            <span class="confidence">${Math.round(hip.conf * 100)}%</span>
+                        </div>
+                        <div class="hipotese-razoes">
+                            ${hip.porque.join(' • ')}
+                        </div>
+                    </div>
+                `).join('');
+                
+                return `<div class="hipoteses-list">${listHtml}</div>`;
+            }
+            
+            renderList(items, className) {
+                const listItems = items.map(item => `<li>${item}</li>`).join('');
+                return `<ul class="${className}">${listItems}</ul>`;
+            }
+            
+            handleFinalReport(report) {
+                console.log('Relatório final recebido:', report);
+                alert(`Consulta finalizada!\nID: ${report.encounter_id}\nRelatório disponível no console.`);
+                
+                // Could save or display the final report here
+                localStorage.setItem(`report_${report.encounter_id}`, JSON.stringify(report));
+            }
+        }
+        
+        // Initialize app when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new MedicalRecordApp();
+        });
+    </script>
+</body>
+</html>
