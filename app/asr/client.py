@@ -10,6 +10,7 @@ import tempfile
 from typing import Optional
 
 from openai import OpenAI
+from pydub import AudioSegment
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +25,35 @@ async def transcribe_audio_chunk(audio_data: bytes) -> str:
     Transcreve um chunk de áudio usando OpenAI Whisper
     
     Args:
-        audio_data: Dados de áudio em bytes (formato WAV ou similar)
+        audio_data: Dados de áudio em bytes (formato WebM/Opus ou WAV)
         
     Returns:
         Texto transcrito em português
     """
     try:
+        # Tentar converter o áudio WebM/Opus para WAV
+        try:
+            # Criar buffer de memória com os dados
+            audio_buffer = io.BytesIO(audio_data)
+            
+            # Carregar áudio (pydub detecta formato automaticamente)
+            audio = AudioSegment.from_file(audio_buffer)
+            
+            # Converter para WAV com taxa de amostragem de 16kHz
+            wav_buffer = io.BytesIO()
+            audio = audio.set_frame_rate(16000).set_channels(1)
+            audio.export(wav_buffer, format="wav")
+            wav_data = wav_buffer.getvalue()
+            
+            logger.debug(f"Áudio convertido: {len(audio_data)} bytes WebM -> {len(wav_data)} bytes WAV")
+            
+        except Exception as conv_error:
+            logger.warning(f"Não foi possível converter áudio, usando original: {conv_error}")
+            wav_data = audio_data
+        
         # Criar arquivo temporário para o áudio
-        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_file:
-            temp_file.write(audio_data)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+            temp_file.write(wav_data)
             temp_file_path = temp_file.name
         
         try:

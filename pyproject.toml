@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.117.1",
     "negspacy>=1.0.4",
     "openai>=1.109.1",
+    "pydub>=0.25.1",
     "python-dotenv>=1.1.1",
     "python-multipart>=0.0.20",
     "spacy>=3.8.7",
