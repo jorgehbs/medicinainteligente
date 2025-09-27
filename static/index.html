@@ -588,7 +588,7 @@
             
             setupAudioRecording() {
                 this.mediaRecorder = new MediaRecorder(this.audioStream, {
-                    mimeType: 'audio/wav',
+                    mimeType: 'audio/webm;codecs=opus',
                     audioBitsPerSecond: 16000
                 });
                 

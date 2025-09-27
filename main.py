@@ -56,45 +56,67 @@ async def health_check():
 
 async def minute_tick_scheduler(encounter_id: str):
     """
-    Scheduler que atualiza os painéis clínicos a cada 60 segundos
+    Scheduler que processa transcrição a cada 10s e painéis clínicos a cada 60s
     """
     logger.info(f"Iniciando scheduler para encounter {encounter_id}")
+    transcription_counter = 0
     
     while encounter_id in TRANSCRIPTS:
         try:
-            # Obter texto acumulado
-            text = TRANSCRIPTS.get(encounter_id, "")
+            # A cada 10 segundos, processar transcrição do buffer acumulado
+            if transcription_counter % 10 == 0 and encounter_id in AUDIO_BUFFERS:
+                buffer_data = AUDIO_BUFFERS[encounter_id]
+                if len(buffer_data) > 5000:  # Mínimo de dados para transcrição
+                    try:
+                        transcription = await transcribe_audio_chunk(buffer_data)
+                        if transcription.strip():
+                            TRANSCRIPTS[encounter_id] += " " + transcription
+                            logger.info(f"Transcrição buffer processada: {len(transcription)} caracteres")
+                            
+                            # Enviar atualização imediata da transcrição para painéis
+                            await broadcast_transcript_update(encounter_id, TRANSCRIPTS[encounter_id])
+                        
+                        # Limpar buffer após transcrição
+                        AUDIO_BUFFERS[encounter_id] = b""
+                        
+                    except Exception as e:
+                        logger.error(f"Erro na transcrição do buffer: {e}")
             
-            if text.strip():
-                # Processar com NLP
-                facts = normalize_and_extract(text)
+            # A cada 60 segundos, processar painéis clínicos
+            if transcription_counter % 60 == 0:
+                text = TRANSCRIPTS.get(encounter_id, "")
                 
-                # Atualizar painéis
-                current_state = PANELS.get(encounter_id, PanelsState())
-                updated_state = update_panels(current_state, facts, text)
-                PANELS[encounter_id] = updated_state
-                
-                # Notificar clientes conectados nos painéis
-                panel_data = updated_state.model_dump()
-                panel_data["updated_at"] = datetime.now().timestamp()
-                panel_data["transcript"] = text  # Incluir transcrição atual
-                
-                # Enviar para WebSockets conectados aos painéis DESTE encounter específico
-                if encounter_id in ACTIVE_CONNECTIONS["panels"]:
-                    disconnected = set()
-                    for ws in ACTIVE_CONNECTIONS["panels"][encounter_id]:
-                        try:
-                            await ws.send_text(json.dumps(panel_data))
-                        except Exception:
-                            disconnected.add(ws)
+                if text.strip():
+                    # Processar com NLP
+                    facts = normalize_and_extract(text)
                     
-                    # Limpar conexões desconectadas
-                    ACTIVE_CONNECTIONS["panels"][encounter_id] -= disconnected
-                
-                logger.info(f"Painéis atualizados para encounter {encounter_id}")
+                    # Atualizar painéis
+                    current_state = PANELS.get(encounter_id, PanelsState())
+                    updated_state = update_panels(current_state, facts, text)
+                    PANELS[encounter_id] = updated_state
+                    
+                    # Notificar clientes conectados nos painéis
+                    panel_data = updated_state.model_dump()
+                    panel_data["updated_at"] = datetime.now().timestamp()
+                    panel_data["transcript"] = text  # Incluir transcrição atual
+                    
+                    # Enviar para WebSockets conectados aos painéis DESTE encounter específico
+                    if encounter_id in ACTIVE_CONNECTIONS["panels"]:
+                        disconnected = set()
+                        for ws in ACTIVE_CONNECTIONS["panels"][encounter_id]:
+                            try:
+                                await ws.send_text(json.dumps(panel_data))
+                            except Exception:
+                                disconnected.add(ws)
+                        
+                        # Limpar conexões desconectadas
+                        ACTIVE_CONNECTIONS["panels"][encounter_id] -= disconnected
+                    
+                    logger.info(f"Painéis atualizados para encounter {encounter_id}")
             
-            # Aguardar 60 segundos
-            await asyncio.sleep(60)
+            # Aguardar 1 segundo e incrementar contador
+            await asyncio.sleep(1)
+            transcription_counter += 1
             
         except Exception as e:
             logger.error(f"Erro no scheduler para encounter {encounter_id}: {e}")
@@ -134,22 +156,9 @@ async def websocket_audio_endpoint(websocket: WebSocket, encounter_id: str):
                 audio_chunk = data["bytes"]
                 AUDIO_BUFFERS[encounter_id] += audio_chunk
                 
-                # Processar transcrição quando tiver dados suficientes
-                if len(AUDIO_BUFFERS[encounter_id]) > 16000:  # ~1 segundo de áudio
-                    try:
-                        transcription = await transcribe_audio_chunk(AUDIO_BUFFERS[encounter_id])
-                        if transcription.strip():
-                            TRANSCRIPTS[encounter_id] += " " + transcription
-                            logger.info(f"Transcrição processada: {len(transcription)} caracteres")
-                            
-                            # Enviar atualização imediata da transcrição para painéis
-                            await broadcast_transcript_update(encounter_id, TRANSCRIPTS[encounter_id])
-                        
-                        # Limpar buffer
-                        AUDIO_BUFFERS[encounter_id] = b""
-                        
-                    except Exception as e:
-                        logger.error(f"Erro na transcrição: {e}")
+                # Buffer acumulativo - não transcrever chunks individuais
+                # A transcrição será feita periodicamente pelo scheduler
+                logger.debug(f"Buffer acumulado: {len(AUDIO_BUFFERS[encounter_id])} bytes")
             
             elif "text" in data:
                 text_data = data["text"]
