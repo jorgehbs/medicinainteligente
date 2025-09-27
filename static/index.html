@@ -605,13 +605,52 @@
                 
                 this.mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0 && this.audioWs?.readyState === WebSocket.OPEN) {
+                        console.log(`Enviando chunk de áudio: ${event.data.size} bytes`);
                         this.audioWs.send(event.data);
                     }
                 };
                 
-                // Start recording with chunks every 2 seconds
-                this.mediaRecorder.start(2000);
+                this.mediaRecorder.onstop = () => {
+                    console.log('Ciclo de gravação concluído, reiniciando...');
+                    // Reiniciar próximo ciclo após pequena pausa
+                    if (this.isRecording) {
+                        setTimeout(() => {
+                            if (this.isRecording && this.mediaRecorder?.state === 'inactive') {
+                                this.startRecordingCycle();
+                            }
+                        }, 200);
+                    }
+                };
+                
+                // Iniciar primeiro ciclo de gravação
+                this.startRecordingCycle();
                 this.isRecording = true;
+            }
+            
+            startRecordingCycle() {
+                if (!this.isRecording) return;
+                
+                try {
+                    // Gravar por 6 segundos para gerar arquivo WebM completo
+                    this.mediaRecorder.start();
+                    console.log('Iniciando novo ciclo de gravação (6 segundos)');
+                    
+                    // Parar após 6 segundos para gerar arquivo válido
+                    setTimeout(() => {
+                        if (this.isRecording && this.mediaRecorder?.state === 'recording') {
+                            this.mediaRecorder.stop();
+                        }
+                    }, 6000);
+                    
+                } catch (error) {
+                    console.error('Erro no ciclo de gravação:', error);
+                    // Tentar novamente após 1 segundo
+                    setTimeout(() => {
+                        if (this.isRecording) {
+                            this.startRecordingCycle();
+                        }
+                    }, 1000);
+                }
             }
             
             async stopConsultation() {

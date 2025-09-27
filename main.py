@@ -136,26 +136,27 @@ async def websocket_audio_endpoint(websocket: WebSocket, encounter_id: str):
             data = await websocket.receive()
             
             if "bytes" in data:
-                # Áudio recebido
+                # Áudio recebido (agora são arquivos WebM completos de 6 segundos)
                 audio_chunk = data["bytes"]
+                logger.info(f"Recebido arquivo de áudio: {len(audio_chunk)} bytes")
                 
-                # Transcrever chunk individual se tiver tamanho suficiente
-                if len(audio_chunk) > 1000:  # Mínimo para transcrição
+                # Cada chunk agora é um arquivo WebM válido completo
+                if len(audio_chunk) > 5000:  # Arquivo válido deve ter tamanho significativo
                     try:
                         transcription = await transcribe_audio_chunk(audio_chunk)
                         if transcription.strip():
-                            # Acumular TEXTO, não bytes de áudio
-                            TRANSCRIPTS[encounter_id] += " " + transcription.strip()
-                            logger.info(f"Nova transcrição: {transcription.strip()}")
+                            # Acumular texto na transcrição contínua
+                            current_text = TRANSCRIPTS[encounter_id]
+                            TRANSCRIPTS[encounter_id] = current_text + " " + transcription.strip()
+                            logger.info(f"Nova transcrição adicionada: '{transcription.strip()}'")
                             
-                            # Enviar atualização imediata da transcrição
+                            # Enviar atualização imediata da transcrição completa
                             await broadcast_transcript_update(encounter_id, TRANSCRIPTS[encounter_id])
                         
                     except Exception as e:
-                        logger.error(f"Erro na transcrição do chunk: {e}")
-                
-                # Manter buffer para fallback (caso necessário)
-                AUDIO_BUFFERS[encounter_id] += audio_chunk[-5000:]  # Manter apenas últimos 5KB
+                        logger.error(f"Erro na transcrição do arquivo: {e}")
+                else:
+                    logger.debug(f"Arquivo muito pequeno para transcrição: {len(audio_chunk)} bytes")
             
             elif "text" in data:
                 text_data = data["text"]
