@@ -77,6 +77,7 @@ async def minute_tick_scheduler(encounter_id: str):
                 # Notificar clientes conectados nos painéis
                 panel_data = updated_state.model_dump()
                 panel_data["updated_at"] = datetime.now().timestamp()
+                panel_data["transcript"] = text  # Incluir transcrição atual
                 
                 # Enviar para WebSockets conectados aos painéis DESTE encounter específico
                 if encounter_id in ACTIVE_CONNECTIONS["panels"]:
@@ -140,6 +141,9 @@ async def websocket_audio_endpoint(websocket: WebSocket, encounter_id: str):
                         if transcription.strip():
                             TRANSCRIPTS[encounter_id] += " " + transcription
                             logger.info(f"Transcrição processada: {len(transcription)} caracteres")
+                            
+                            # Enviar atualização imediata da transcrição para painéis
+                            await broadcast_transcript_update(encounter_id, TRANSCRIPTS[encounter_id])
                         
                         # Limpar buffer
                         AUDIO_BUFFERS[encounter_id] = b""
@@ -184,6 +188,9 @@ async def websocket_audio_endpoint(websocket: WebSocket, encounter_id: str):
                         "data": final_report
                     }))
                     
+                    # Limpar recursos do encounter
+                    await cleanup_encounter(encounter_id)
+                    
                     break
     
     except WebSocketDisconnect:
@@ -212,11 +219,14 @@ async def websocket_panels_endpoint(websocket: WebSocket, encounter_id: str):
         if encounter_id in PANELS:
             current_panels = PANELS[encounter_id].model_dump()
             current_panels["updated_at"] = datetime.now().timestamp()
+            # Incluir transcrição atual se disponível
+            current_panels["transcript"] = TRANSCRIPTS.get(encounter_id, "")
             await websocket.send_text(json.dumps(current_panels))
         else:
             # Enviar painéis vazios
             empty_panels = PanelsState().model_dump()
             empty_panels["updated_at"] = datetime.now().timestamp()
+            empty_panels["transcript"] = ""
             await websocket.send_text(json.dumps(empty_panels))
         
         # Manter conexão ativa
@@ -230,6 +240,39 @@ async def websocket_panels_endpoint(websocket: WebSocket, encounter_id: str):
     finally:
         if encounter_id in ACTIVE_CONNECTIONS["panels"]:
             ACTIVE_CONNECTIONS["panels"][encounter_id].discard(websocket)
+
+async def broadcast_transcript_update(encounter_id: str, transcript_text: str):
+    """Envia atualização imediata da transcrição para clientes dos painéis"""
+    if encounter_id in ACTIVE_CONNECTIONS["panels"]:
+        transcript_update = {
+            "type": "transcript_update", 
+            "transcript": transcript_text,
+            "updated_at": datetime.now().timestamp()
+        }
+        
+        disconnected = set()
+        for ws in ACTIVE_CONNECTIONS["panels"][encounter_id]:
+            try:
+                await ws.send_text(json.dumps(transcript_update))
+            except Exception:
+                disconnected.add(ws)
+        
+        # Limpar conexões desconectadas
+        ACTIVE_CONNECTIONS["panels"][encounter_id] -= disconnected
+
+async def cleanup_encounter(encounter_id: str):
+    """Limpa recursos de um encounter finalizado"""
+    # Cancelar scheduler se estiver rodando
+    if encounter_id in RUNNING_TASKS:
+        RUNNING_TASKS[encounter_id].cancel()
+        del RUNNING_TASKS[encounter_id]
+    
+    # Limpar dados em memória
+    TRANSCRIPTS.pop(encounter_id, None)
+    PANELS.pop(encounter_id, None)
+    AUDIO_BUFFERS.pop(encounter_id, None)
+    
+    logger.info(f"Recursos limpos para encounter {encounter_id}")
 
 @app.on_event("shutdown")
 async def shutdown_event():

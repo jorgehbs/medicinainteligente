@@ -247,6 +247,63 @@
             content: "🚨";
         }
         
+        .transcript-section {
+            margin-top: 2rem;
+        }
+        
+        .panel-transcript {
+            border-left-color: #9b59b6;
+            max-width: 100%;
+        }
+        
+        .transcript-status {
+            font-size: 0.8rem;
+            font-weight: normal;
+            color: #7f8c8d;
+            margin-left: 0.5rem;
+        }
+        
+        .transcript-status.recording {
+            color: #e74c3c;
+            animation: pulse 2s infinite;
+        }
+        
+        .transcript-content {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            line-height: 1.6;
+            font-size: 0.9rem;
+        }
+        
+        .transcript-placeholder {
+            color: #7f8c8d;
+            font-style: italic;
+            text-align: center;
+            padding: 2rem 0;
+        }
+        
+        .transcript-text {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .transcript-new {
+            background: linear-gradient(90deg, #e8f5e8 0%, transparent 100%);
+            animation: fadeIn 0.5s ease-in;
+            padding: 0.2rem;
+            border-radius: 4px;
+            margin: 0.2rem 0;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; background: #c8e6c9; }
+            to { opacity: 1; background: transparent; }
+        }
+        
         .update-info {
             background: #f8f9fa;
             padding: 1rem;
@@ -367,6 +424,21 @@
                 </div>
             </div>
         </div>
+
+        <!-- Painel de Transcrição -->
+        <div class="transcript-section">
+            <div class="panel panel-transcript">
+                <h3>
+                    🎤 Transcrição da Consulta
+                    <span class="transcript-status" id="transcriptStatus">Aguardando...</span>
+                </h3>
+                <div class="transcript-content" id="transcript-content">
+                    <div class="transcript-placeholder">
+                        Inicie a consulta para ver a transcrição em tempo real...
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -397,6 +469,11 @@
                 this.hipotesesContent = document.getElementById('hipoteses-content');
                 this.perguntasContent = document.getElementById('perguntas-content');
                 this.condutasContent = document.getElementById('condutas-content');
+                
+                // Transcript elements
+                this.transcriptContent = document.getElementById('transcript-content');
+                this.transcriptStatus = document.getElementById('transcriptStatus');
+                this.lastTranscriptLength = 0;
             }
             
             initializeEventListeners() {
@@ -483,8 +560,15 @@
                     };
                     
                     this.panelsWs.onmessage = (event) => {
-                        const panelsData = JSON.parse(event.data);
-                        this.updatePanels(panelsData);
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'transcript_update') {
+                            // Atualização imediata da transcrição
+                            this.updateTranscript(data.transcript || '');
+                        } else {
+                            // Atualização completa dos painéis
+                            this.updatePanels(data);
+                        }
                     };
                     
                     this.panelsWs.onerror = (error) => {
@@ -551,6 +635,8 @@
                         this.statusIndicator.className = 'status recording';
                         this.statusIndicator.textContent = 'Gravando...';
                         this.recordingIndicator.style.display = 'block';
+                        this.transcriptStatus.textContent = 'Gravando...';
+                        this.transcriptStatus.className = 'transcript-status recording';
                         break;
                         
                     case 'stopped':
@@ -560,6 +646,9 @@
                         this.statusIndicator.className = 'status disconnected';
                         this.statusIndicator.textContent = 'Desconectado';
                         this.recordingIndicator.style.display = 'none';
+                        this.transcriptStatus.textContent = 'Aguardando...';
+                        this.transcriptStatus.className = 'transcript-status';
+                        this.resetTranscript();
                         this.generateDefaultEncounterId();
                         break;
                 }
@@ -599,6 +688,9 @@
                     this.condutasContent.className = 'panel-content empty';
                     this.condutasContent.textContent = 'Aguardando dados para sugerir condutas...';
                 }
+                
+                // Update transcript
+                this.updateTranscript(data.transcript || '');
             }
             
             renderHypotheses(hypotheses) {
@@ -620,6 +712,53 @@
             renderList(items, className) {
                 const listItems = items.map(item => `<li>${item}</li>`).join('');
                 return `<ul class="${className}">${listItems}</ul>`;
+            }
+            
+            updateTranscript(newTranscript) {
+                if (!newTranscript || newTranscript === this.currentTranscript) {
+                    return;
+                }
+                
+                this.currentTranscript = newTranscript;
+                
+                // Clear placeholder
+                if (this.transcriptContent.querySelector('.transcript-placeholder')) {
+                    this.transcriptContent.innerHTML = '';
+                }
+                
+                // Check if this is new content
+                const isNewContent = newTranscript.length > this.lastTranscriptLength;
+                
+                // Update transcript display
+                this.transcriptContent.innerHTML = `<div class="transcript-text ${isNewContent ? 'transcript-new' : ''}">${newTranscript}</div>`;
+                
+                // Auto-scroll to bottom
+                this.transcriptContent.scrollTop = this.transcriptContent.scrollHeight;
+                
+                // Update status
+                if (newTranscript.trim()) {
+                    this.transcriptStatus.textContent = `${newTranscript.split(' ').length} palavras`;
+                }
+                
+                this.lastTranscriptLength = newTranscript.length;
+                
+                // Remove new highlight after animation
+                setTimeout(() => {
+                    const newElement = this.transcriptContent.querySelector('.transcript-new');
+                    if (newElement) {
+                        newElement.classList.remove('transcript-new');
+                    }
+                }, 500);
+            }
+            
+            resetTranscript() {
+                this.transcriptContent.innerHTML = `
+                    <div class="transcript-placeholder">
+                        Inicie a consulta para ver a transcrição em tempo real...
+                    </div>
+                `;
+                this.currentTranscript = '';
+                this.lastTranscriptLength = 0;
             }
             
             handleFinalReport(report) {
