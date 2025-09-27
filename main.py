@@ -63,24 +63,8 @@ async def minute_tick_scheduler(encounter_id: str):
     
     while encounter_id in TRANSCRIPTS:
         try:
-            # A cada 10 segundos, processar transcrição do buffer acumulado
-            if transcription_counter % 10 == 0 and encounter_id in AUDIO_BUFFERS:
-                buffer_data = AUDIO_BUFFERS[encounter_id]
-                if len(buffer_data) > 5000:  # Mínimo de dados para transcrição
-                    try:
-                        transcription = await transcribe_audio_chunk(buffer_data)
-                        if transcription.strip():
-                            TRANSCRIPTS[encounter_id] += " " + transcription
-                            logger.info(f"Transcrição buffer processada: {len(transcription)} caracteres")
-                            
-                            # Enviar atualização imediata da transcrição para painéis
-                            await broadcast_transcript_update(encounter_id, TRANSCRIPTS[encounter_id])
-                        
-                        # Limpar buffer após transcrição
-                        AUDIO_BUFFERS[encounter_id] = b""
-                        
-                    except Exception as e:
-                        logger.error(f"Erro na transcrição do buffer: {e}")
+            # Buffer não é mais usado para transcrição periódica
+            # As transcrições são feitas em tempo real por chunk individual
             
             # A cada 60 segundos, processar painéis clínicos
             if transcription_counter % 60 == 0:
@@ -154,11 +138,24 @@ async def websocket_audio_endpoint(websocket: WebSocket, encounter_id: str):
             if "bytes" in data:
                 # Áudio recebido
                 audio_chunk = data["bytes"]
-                AUDIO_BUFFERS[encounter_id] += audio_chunk
                 
-                # Buffer acumulativo - não transcrever chunks individuais
-                # A transcrição será feita periodicamente pelo scheduler
-                logger.debug(f"Buffer acumulado: {len(AUDIO_BUFFERS[encounter_id])} bytes")
+                # Transcrever chunk individual se tiver tamanho suficiente
+                if len(audio_chunk) > 1000:  # Mínimo para transcrição
+                    try:
+                        transcription = await transcribe_audio_chunk(audio_chunk)
+                        if transcription.strip():
+                            # Acumular TEXTO, não bytes de áudio
+                            TRANSCRIPTS[encounter_id] += " " + transcription.strip()
+                            logger.info(f"Nova transcrição: {transcription.strip()}")
+                            
+                            # Enviar atualização imediata da transcrição
+                            await broadcast_transcript_update(encounter_id, TRANSCRIPTS[encounter_id])
+                        
+                    except Exception as e:
+                        logger.error(f"Erro na transcrição do chunk: {e}")
+                
+                # Manter buffer para fallback (caso necessário)
+                AUDIO_BUFFERS[encounter_id] += audio_chunk[-5000:]  # Manter apenas últimos 5KB
             
             elif "text" in data:
                 text_data = data["text"]

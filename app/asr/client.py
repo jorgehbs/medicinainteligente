@@ -25,35 +25,36 @@ async def transcribe_audio_chunk(audio_data: bytes) -> str:
     Transcreve um chunk de áudio usando OpenAI Whisper
     
     Args:
-        audio_data: Dados de áudio em bytes (formato WebM/Opus ou WAV)
+        audio_data: Dados de áudio em bytes (formato WebM ou WAV)
         
     Returns:
         Texto transcrito em português
     """
     try:
-        # Tentar converter o áudio WebM/Opus para WAV
-        try:
-            # Criar buffer de memória com os dados
-            audio_buffer = io.BytesIO(audio_data)
-            
-            # Carregar áudio (pydub detecta formato automaticamente)
-            audio = AudioSegment.from_file(audio_buffer)
-            
-            # Converter para WAV com taxa de amostragem de 16kHz
-            wav_buffer = io.BytesIO()
-            audio = audio.set_frame_rate(16000).set_channels(1)
-            audio.export(wav_buffer, format="wav")
-            wav_data = wav_buffer.getvalue()
-            
-            logger.debug(f"Áudio convertido: {len(audio_data)} bytes WebM -> {len(wav_data)} bytes WAV")
-            
-        except Exception as conv_error:
-            logger.warning(f"Não foi possível converter áudio, usando original: {conv_error}")
-            wav_data = audio_data
+        # Validar tamanho mínimo dos dados
+        if len(audio_data) < 1000:
+            logger.debug("Dados de áudio muito pequenos para transcrição")
+            return ""
         
-        # Criar arquivo temporário para o áudio
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
-            temp_file.write(wav_data)
+        # Detectar formato e usar arquivo temporário apropriado
+        file_suffix = ".wav"  # Padrão
+        
+        # Verificar headers para determinar formato
+        if audio_data[:4] == b'RIFF' and audio_data[8:12] == b'WAVE':
+            file_suffix = ".wav"
+            logger.debug("Formato detectado: WAV")
+        elif audio_data[:4] == b'\x1aE\xdf\xa3':  # WebM EBML header
+            file_suffix = ".webm"
+            logger.debug("Formato detectado: WebM")
+        else:
+            # Tentar detectar WebM por outros indicadores
+            if b'webm' in audio_data[:100].lower() or b'opus' in audio_data[:100].lower():
+                file_suffix = ".webm"
+                logger.debug("Formato detectado: WebM (heurística)")
+        
+        # Criar arquivo temporário com o formato correto
+        with tempfile.NamedTemporaryFile(suffix=file_suffix, delete=False) as temp_file:
+            temp_file.write(audio_data)
             temp_file_path = temp_file.name
         
         try:

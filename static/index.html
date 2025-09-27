@@ -587,10 +587,21 @@
             }
             
             setupAudioRecording() {
+                // Testar formatos suportados pelo navegador
+                let mimeType = 'audio/wav';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'audio/webm;codecs=opus';
+                    if (!MediaRecorder.isTypeSupported(mimeType)) {
+                        mimeType = 'audio/webm';
+                    }
+                }
+                
                 this.mediaRecorder = new MediaRecorder(this.audioStream, {
-                    mimeType: 'audio/webm;codecs=opus',
+                    mimeType: mimeType,
                     audioBitsPerSecond: 16000
                 });
+                
+                console.log('Using audio format:', mimeType);
                 
                 this.mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0 && this.audioWs?.readyState === WebSocket.OPEN) {
