@@ -1,0 +1,16 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "experta>=1.9.4",
+    "fastapi>=0.117.1",
+    "negspacy>=1.0.4",
+    "openai>=1.109.1",
+    "python-dotenv>=1.1.1",
+    "python-multipart>=0.0.20",
+    "spacy>=3.8.7",
+    "uvicorn[standard]>=0.37.0",
+    "websockets>=15.0.1",
+]
