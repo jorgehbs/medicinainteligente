@@ -40,15 +40,15 @@
             padding: 0.5rem 1rem 1rem;
         }
         
-        .controls {
+        .controls-compact {
             background: white;
-            padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             margin-bottom: 1rem;
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 0.8rem;
             flex-wrap: wrap;
         }
         
@@ -361,12 +361,13 @@
                 gap: 1rem;
             }
             
-            .controls {
+            .controls-compact {
                 flex-direction: column;
                 align-items: stretch;
+                gap: 0.5rem;
             }
             
-            .controls .btn {
+            .controls-compact .btn {
                 justify-content: center;
             }
         }
@@ -379,25 +380,21 @@
 
 
     <div class="container">
-        <div class="controls">
-            <div class="encounter-input">
-                <input type="text" id="encounterId" placeholder="ID do Atendimento (ex: ATD-2025-001)" value="">
-            </div>
-            <button class="btn btn-primary" id="startBtn">
-                🎤 Iniciar Consulta
-            </button>
-            <button class="btn btn-danger" id="stopBtn" disabled>
-                ⏹️ Finalizar Consulta
-            </button>
-            <div class="status disconnected" id="statusIndicator">
-                Desconectado
-            </div>
-        </div>
-
-
         <div class="main-layout">
             <!-- Coluna da Transcrição (Esquerda) -->
             <div class="transcript-column">
+                <div class="controls-compact">
+                    <button class="btn btn-primary" id="startBtn">
+                        🎤 Iniciar Consulta
+                    </button>
+                    <button class="btn btn-danger" id="stopBtn" disabled>
+                        ⏹️ Finalizar Consulta
+                    </button>
+                    <div class="status disconnected" id="statusIndicator">
+                        Desconectado
+                    </div>
+                </div>
+                
                 <div class="panel panel-transcript">
                     <h3>
                         🎤 Transcrição da Consulta
@@ -472,7 +469,7 @@
             }
             
             initializeElements() {
-                this.encounterInput = document.getElementById('encounterId');
+                // this.encounterInput = document.getElementById('encounterId'); // Removed
                 this.startBtn = document.getElementById('startBtn');
                 this.stopBtn = document.getElementById('stopBtn');
                 this.statusIndicator = document.getElementById('statusIndicator');
@@ -499,16 +496,12 @@
             generateDefaultEncounterId() {
                 const now = new Date();
                 const timestamp = now.toISOString().slice(0, 19).replace(/[-:T]/g, '');
-                this.encounterInput.value = `ATD-${timestamp}`;
+                return `ATD-${timestamp}`;
             }
             
             async startConsultation() {
                 try {
-                    const encounterId = this.encounterInput.value.trim();
-                    if (!encounterId) {
-                        alert('Por favor, informe o ID do atendimento');
-                        return;
-                    }
+                    const encounterId = this.generateDefaultEncounterId();
                     
                     this.currentEncounter = encounterId;
                     
@@ -646,7 +639,7 @@
                     case 'recording':
                         this.startBtn.disabled = true;
                         this.stopBtn.disabled = false;
-                        this.encounterInput.disabled = true;
+                        // this.encounterInput.disabled = true; // Removed field
                         this.statusIndicator.className = 'status recording';
                         this.statusIndicator.textContent = 'Gravando...';
                         this.recordingIndicator.style.display = 'block';
@@ -657,14 +650,14 @@
                     case 'stopped':
                         this.startBtn.disabled = false;
                         this.stopBtn.disabled = true;
-                        this.encounterInput.disabled = false;
+                        // this.encounterInput.disabled = false; // Removed field
                         this.statusIndicator.className = 'status disconnected';
                         this.statusIndicator.textContent = 'Desconectado';
                         this.recordingIndicator.style.display = 'none';
                         this.transcriptStatus.textContent = 'Aguardando...';
                         this.transcriptStatus.className = 'transcript-status';
                         this.resetTranscript();
-                        this.generateDefaultEncounterId();
+                        // this.generateDefaultEncounterId(); // No longer needed in stopped state
                         break;
                 }
             }
