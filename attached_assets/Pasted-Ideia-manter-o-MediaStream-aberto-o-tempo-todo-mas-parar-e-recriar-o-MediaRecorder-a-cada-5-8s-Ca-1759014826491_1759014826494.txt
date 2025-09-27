@@ -1,0 +1,60 @@
+Ideia: manter o MediaStream aberto o tempo todo, mas parar e recriar o MediaRecorder a cada 5–8s. Cada ondataavailable vira um arquivo completo (audio/webm;codecs=opus) com cabeçalho, que o ASR consegue decodificar.
+
+<script>
+let mediaStream;
+let currentRecorder;
+let chunkSeq = 0;
+const INTERVAL_MS = 6000; // 6s
+const MIME = 'audio/webm;codecs=opus'; // checar suporte com MediaRecorder.isTypeSupported
+
+async function startCapture() {
+  mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  cycleRecorder(); // inicia o primeiro ciclo
+}
+
+function cycleRecorder() {
+  // fecha recorder anterior (se existir)
+  if (currentRecorder && currentRecorder.state !== 'inactive') {
+    currentRecorder.stop(); // disparará ondataavailable com um WebM completo
+  }
+
+  // cria novo recorder com o MESMO stream (não pare o stream!)
+  currentRecorder = new MediaRecorder(mediaStream, { mimeType: MIME, audioBitsPerSecond: 128000 });
+
+  currentRecorder.ondataavailable = async (ev) => {
+    if (!ev.data || ev.data.size === 0) return;
+    const blob = ev.data; // WebM completo (com headers)
+    const file = new File([blob], `encounter123_${String(chunkSeq).padStart(5,'0')}.webm`, { type: blob.type });
+    chunkSeq++;
+
+    // envie via fetch (multipart) ou WebSocket binário
+    const form = new FormData();
+    form.append('file', file);
+    form.append('encounter_id', 'encounter123');
+    form.append('seq', String(chunkSeq));
+    try {
+      await fetch('/asr/chunk', { method: 'POST', body: form });
+    } catch (e) {
+      console.error('Upload failed', e);
+    }
+  };
+
+  currentRecorder.start(); // sem timeslice! vamos controlar o ciclo manualmente
+  // agenda o próximo ciclo em 6s, garantindo arquivo completo por segmento
+  setTimeout(cycleRecorder, INTERVAL_MS);
+}
+
+function stopCapture() {
+  if (currentRecorder && currentRecorder.state !== 'inactive') currentRecorder.stop();
+  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+}
+</script>
+
+
+Notas importantes
+
+Não use timeslice confiando que o navegador fará fragmentos decodificáveis; muitas vezes são “chunked” sem header/índice.
+
+Reiniciar o recorder (não o stream) força escrita de cabeçalho → arquivo válido.
+
+Use MediaRecorder.isTypeSupported(MIME); fallback para 'audio/webm' se necessário.

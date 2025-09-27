@@ -587,80 +587,86 @@
             }
             
             setupAudioRecording() {
-                // Testar formatos suportados pelo navegador
-                let mimeType = 'audio/wav';
-                if (!MediaRecorder.isTypeSupported(mimeType)) {
-                    mimeType = 'audio/webm;codecs=opus';
-                    if (!MediaRecorder.isTypeSupported(mimeType)) {
-                        mimeType = 'audio/webm';
-                    }
+                // Implementar solução de cycleRecorder para arquivos WebM válidos
+                this.chunkSeq = 0;
+                this.INTERVAL_MS = 6000; // 6 segundos por ciclo
+                
+                // Verificar formato suportado
+                const MIME = 'audio/webm;codecs=opus';
+                if (!MediaRecorder.isTypeSupported(MIME)) {
+                    console.warn('WebM Opus não suportado, usando fallback');
+                    this.mimeType = 'audio/webm';
+                } else {
+                    this.mimeType = MIME;
                 }
                 
-                this.mediaRecorder = new MediaRecorder(this.audioStream, {
-                    mimeType: mimeType,
-                    audioBitsPerSecond: 16000
-                });
-                
-                console.log('Using audio format:', mimeType);
-                
-                this.mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0 && this.audioWs?.readyState === WebSocket.OPEN) {
-                        console.log(`Enviando chunk de áudio: ${event.data.size} bytes`);
-                        this.audioWs.send(event.data);
-                    }
-                };
-                
-                this.mediaRecorder.onstop = () => {
-                    console.log('Ciclo de gravação concluído, reiniciando...');
-                    // Reiniciar próximo ciclo após pequena pausa
-                    if (this.isRecording) {
-                        setTimeout(() => {
-                            if (this.isRecording && this.mediaRecorder?.state === 'inactive') {
-                                this.startRecordingCycle();
-                            }
-                        }, 200);
-                    }
-                };
+                console.log('Using audio format:', this.mimeType);
                 
                 // Iniciar primeiro ciclo de gravação
-                this.startRecordingCycle();
+                this.cycleRecorder();
                 this.isRecording = true;
             }
             
-            startRecordingCycle() {
+            cycleRecorder() {
                 if (!this.isRecording) return;
                 
-                try {
-                    // Gravar por 6 segundos para gerar arquivo WebM completo
-                    this.mediaRecorder.start();
-                    console.log('Iniciando novo ciclo de gravação (6 segundos)');
-                    
-                    // Parar após 6 segundos para gerar arquivo válido
-                    setTimeout(() => {
-                        if (this.isRecording && this.mediaRecorder?.state === 'recording') {
-                            this.mediaRecorder.stop();
-                        }
-                    }, 6000);
-                    
-                } catch (error) {
-                    console.error('Erro no ciclo de gravação:', error);
-                    // Tentar novamente após 1 segundo
-                    setTimeout(() => {
-                        if (this.isRecording) {
-                            this.startRecordingCycle();
-                        }
-                    }, 1000);
+                // Fechar recorder anterior (se existir)
+                if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                    this.mediaRecorder.stop(); // disparará ondataavailable com WebM completo
                 }
+                
+                // Criar novo recorder com o MESMO stream (não parar o stream!)
+                this.mediaRecorder = new MediaRecorder(this.audioStream, { 
+                    mimeType: this.mimeType, 
+                    audioBitsPerSecond: 128000 
+                });
+                
+                this.mediaRecorder.ondataavailable = async (event) => {
+                    if (!event.data || event.data.size === 0) return;
+                    
+                    const blob = event.data; // WebM completo (com headers)
+                    console.log(`Arquivo WebM completo gerado: ${blob.size} bytes, tipo: ${blob.type}`);
+                    
+                    // Enviar via WebSocket binário
+                    if (this.audioWs?.readyState === WebSocket.OPEN) {
+                        this.audioWs.send(blob);
+                        this.chunkSeq++;
+                        console.log(`Enviado chunk #${this.chunkSeq}: ${blob.size} bytes`);
+                    }
+                };
+                
+                this.mediaRecorder.onerror = (error) => {
+                    console.error('Erro no MediaRecorder:', error);
+                };
+                
+                // Iniciar gravação sem timeslice - controlamos o ciclo manualmente
+                this.mediaRecorder.start();
+                console.log(`Iniciando novo ciclo MediaRecorder #${this.chunkSeq + 1}`);
+                
+                // Agendar próximo ciclo em 6s, garantindo arquivo completo por segmento
+                this.recordingTimeout = setTimeout(() => {
+                    this.cycleRecorder();
+                }, this.INTERVAL_MS);
             }
             
             async stopConsultation() {
                 try {
+                    // Parar flag de gravação primeiro para cancelar ciclos
+                    this.isRecording = false;
+                    
+                    // Cancelar timeout do próximo ciclo de gravação
+                    if (this.recordingTimeout) {
+                        clearTimeout(this.recordingTimeout);
+                        this.recordingTimeout = null;
+                        console.log('Timeout do ciclo de gravação cancelado');
+                    }
+                    
                     // Send finalization signal
                     if (this.audioWs?.readyState === WebSocket.OPEN) {
                         this.audioWs.send('__finalize__');
                     }
                     
-                    // Stop recording
+                    // Stop recording if active
                     if (this.mediaRecorder?.state === 'recording') {
                         this.mediaRecorder.stop();
                     }
@@ -678,6 +684,7 @@
                     
                     // Update UI
                     this.updateUIState('stopped');
+                    console.log('Consulta finalizada');
                     
                 } catch (error) {
                     console.error('Erro ao finalizar consulta:', error);
