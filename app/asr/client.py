@@ -31,7 +31,7 @@ async def transcribe_audio_chunk(audio_data: bytes) -> str:
     """
     try:
         # Criar arquivo temporário para o áudio
-        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
             temp_file.write(audio_data)
             temp_file_path = temp_file.name
         
