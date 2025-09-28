@@ -30,8 +30,9 @@ app = FastAPI(title="Prontuário Eletrônico Hands-Free", version="1.0.0")
 # Storage em memória para MVP
 TRANSCRIPTS: Dict[str, str] = {}
 PANELS: Dict[str, PanelsState] = {}
-AUDIO_BUFFERS: Dict[str, bytes] = {}
 RUNNING_TASKS: Dict[str, asyncio.Task] = {}
+TRANSCRIPTION_WORKERS: Dict[str, asyncio.Task] = {}
+AUDIO_QUEUES: Dict[str, asyncio.Queue] = {}
 ACTIVE_CONNECTIONS: Dict[str, Dict[str, Set[WebSocket]]] = {"audio": {}, "panels": {}}
 
 # Servir arquivos estáticos
@@ -60,7 +61,7 @@ async def minute_tick_scheduler(encounter_id: str):
     """
     logger.info(f"Iniciando scheduler para encounter {encounter_id}")
     transcription_counter = 0
-    
+
     while encounter_id in TRANSCRIPTS:
         try:
             # Buffer não é mais usado para transcrição periódica
@@ -106,6 +107,42 @@ async def minute_tick_scheduler(encounter_id: str):
             logger.error(f"Erro no scheduler para encounter {encounter_id}: {e}")
             await asyncio.sleep(5)  # Retry em caso de erro
 
+async def process_audio_queue(encounter_id: str):
+    """Processa chunks de áudio em fila garantindo ordem de chegada."""
+    queue = AUDIO_QUEUES.get(encounter_id)
+    if queue is None:
+        logger.warning(f"Fila de áudio ausente para encounter {encounter_id}")
+        return
+
+    logger.info(f"Iniciando worker de transcrição para encounter {encounter_id}")
+
+    try:
+        while True:
+            try:
+                audio_chunk = await queue.get()
+            except asyncio.CancelledError:
+                logger.info(f"Worker de transcrição cancelado para encounter {encounter_id}")
+                raise
+
+            try:
+                transcription = await transcribe_audio_chunk(audio_chunk)
+                if transcription and transcription.strip():
+                    cleaned = transcription.strip()
+                    current_text = TRANSCRIPTS.get(encounter_id, "").strip()
+                    updated_text = f"{current_text} {cleaned}".strip() if current_text else cleaned
+                    TRANSCRIPTS[encounter_id] = updated_text
+                    logger.info(f"Nova transcrição adicionada: '{cleaned}'")
+                    await broadcast_transcript_update(encounter_id, updated_text)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Erro na transcrição do arquivo: {e}")
+            finally:
+                queue.task_done()
+    except asyncio.CancelledError:
+        logger.debug(f"Encerrando worker de transcrição para encounter {encounter_id}")
+        raise
+
 @app.websocket("/ws/audio/{encounter_id}")
 async def websocket_audio_endpoint(websocket: WebSocket, encounter_id: str):
     """
@@ -123,13 +160,19 @@ async def websocket_audio_endpoint(websocket: WebSocket, encounter_id: str):
         # Inicializar dados do encounter se necessário
         if encounter_id not in TRANSCRIPTS:
             TRANSCRIPTS[encounter_id] = ""
-            AUDIO_BUFFERS[encounter_id] = b""
             PANELS[encounter_id] = PanelsState()
-            
+
             # Iniciar scheduler de 1 minuto
             if encounter_id not in RUNNING_TASKS:
                 task = asyncio.create_task(minute_tick_scheduler(encounter_id))
                 RUNNING_TASKS[encounter_id] = task
+
+        if encounter_id not in AUDIO_QUEUES:
+            AUDIO_QUEUES[encounter_id] = asyncio.Queue()
+
+        if encounter_id not in TRANSCRIPTION_WORKERS:
+            worker = asyncio.create_task(process_audio_queue(encounter_id))
+            TRANSCRIPTION_WORKERS[encounter_id] = worker
         
         while True:
             # Receber dados (pode ser áudio em bytes ou comando de texto)
@@ -142,19 +185,7 @@ async def websocket_audio_endpoint(websocket: WebSocket, encounter_id: str):
                 
                 # Cada chunk agora é um arquivo WebM válido completo
                 if len(audio_chunk) > 5000:  # Arquivo válido deve ter tamanho significativo
-                    try:
-                        transcription = await transcribe_audio_chunk(audio_chunk)
-                        if transcription.strip():
-                            # Acumular texto na transcrição contínua
-                            current_text = TRANSCRIPTS[encounter_id]
-                            TRANSCRIPTS[encounter_id] = current_text + " " + transcription.strip()
-                            logger.info(f"Nova transcrição adicionada: '{transcription.strip()}'")
-                            
-                            # Enviar atualização imediata da transcrição completa
-                            await broadcast_transcript_update(encounter_id, TRANSCRIPTS[encounter_id])
-                        
-                    except Exception as e:
-                        logger.error(f"Erro na transcrição do arquivo: {e}")
+                    await AUDIO_QUEUES[encounter_id].put(audio_chunk)
                 else:
                     logger.debug(f"Arquivo muito pequeno para transcrição: {len(audio_chunk)} bytes")
             
@@ -164,15 +195,9 @@ async def websocket_audio_endpoint(websocket: WebSocket, encounter_id: str):
                 # Comando de finalização
                 if text_data == "__finalize__":
                     logger.info(f"Finalizando encounter {encounter_id}")
-                    
-                    # Processar último chunk de áudio se houver
-                    if AUDIO_BUFFERS[encounter_id]:
-                        try:
-                            final_transcription = await transcribe_audio_chunk(AUDIO_BUFFERS[encounter_id])
-                            if final_transcription.strip():
-                                TRANSCRIPTS[encounter_id] += " " + final_transcription
-                        except Exception as e:
-                            logger.error(f"Erro na transcrição final: {e}")
+
+                    if encounter_id in AUDIO_QUEUES:
+                        await AUDIO_QUEUES[encounter_id].join()
                     
                     # Gerar relatório final
                     final_text = TRANSCRIPTS[encounter_id]
@@ -273,11 +298,25 @@ async def cleanup_encounter(encounter_id: str):
     if encounter_id in RUNNING_TASKS:
         RUNNING_TASKS[encounter_id].cancel()
         del RUNNING_TASKS[encounter_id]
-    
+
+    # Cancelar worker de transcrição e limpar fila
+    if encounter_id in TRANSCRIPTION_WORKERS:
+        worker = TRANSCRIPTION_WORKERS.pop(encounter_id)
+        worker.cancel()
+        try:
+            await worker
+        except asyncio.CancelledError:
+            pass
+
+    if encounter_id in AUDIO_QUEUES:
+        queue = AUDIO_QUEUES.pop(encounter_id)
+        while not queue.empty():
+            queue.get_nowait()
+            queue.task_done()
+
     # Limpar dados em memória
     TRANSCRIPTS.pop(encounter_id, None)
     PANELS.pop(encounter_id, None)
-    AUDIO_BUFFERS.pop(encounter_id, None)
     
     logger.info(f"Recursos limpos para encounter {encounter_id}")
 
@@ -285,14 +324,18 @@ async def cleanup_encounter(encounter_id: str):
 async def shutdown_event():
     """Limpeza ao encerrar a aplicação"""
     logger.info("Encerrando aplicação...")
-    
+
     # Cancelar todas as tarefas em execução
     for task in RUNNING_TASKS.values():
         task.cancel()
-    
+    for worker in TRANSCRIPTION_WORKERS.values():
+        worker.cancel()
+
     # Aguardar cancelamento
     if RUNNING_TASKS:
         await asyncio.gather(*RUNNING_TASKS.values(), return_exceptions=True)
+    if TRANSCRIPTION_WORKERS:
+        await asyncio.gather(*TRANSCRIPTION_WORKERS.values(), return_exceptions=True)
 
 def validate_startup_requirements():
     """Valida requisitos essenciais para inicialização"""
