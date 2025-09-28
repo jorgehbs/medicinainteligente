@@ -88,12 +88,21 @@
             background: #667eea;
             color: white;
         }
-        
+
         .btn-primary:hover:not(:disabled) {
             background: #5a6fd8;
             transform: translateY(-1px);
         }
-        
+
+        .btn-success {
+            background: #2ecc71;
+            color: white;
+        }
+
+        .btn-success:hover:not(:disabled) {
+            background: #27ae60;
+        }
+
         .btn-danger {
             background: #e74c3c;
             color: white;
@@ -390,6 +399,9 @@
                     <button class="btn btn-danger" id="stopBtn" disabled>
                         ⏹️ Finalizar Consulta
                     </button>
+                    <button class="btn btn-success" id="helloBtn">
+                        👋 Olá Jorge
+                    </button>
                     <div class="status disconnected" id="statusIndicator">
                         Desconectado
                     </div>
@@ -472,6 +484,7 @@
                 // this.encounterInput = document.getElementById('encounterId'); // Removed
                 this.startBtn = document.getElementById('startBtn');
                 this.stopBtn = document.getElementById('stopBtn');
+                this.helloBtn = document.getElementById('helloBtn');
                 this.statusIndicator = document.getElementById('statusIndicator');
                 // this.lastUpdate = document.getElementById('lastUpdate'); // Removed element
                 this.recordingIndicator = document.getElementById('recordingIndicator');
@@ -491,6 +504,9 @@
             initializeEventListeners() {
                 this.startBtn.addEventListener('click', () => this.startConsultation());
                 this.stopBtn.addEventListener('click', () => this.stopConsultation());
+                this.helloBtn.addEventListener('click', () => {
+                    alert('Olá, Jorge!');
+                });
             }
             
             generateDefaultEncounterId() {
